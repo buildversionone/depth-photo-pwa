@@ -185,10 +185,10 @@ function setStatus(msg: string): void {
 }
 
 function defaultStatus(): void {
-  if (!sensorApisPresent()) setStatus('This browser has no motion sensors. Drag the photo to look around.');
-  else if (!permissionGranted) setStatus('Tap Enable motion, then tilt your phone.');
-  else if (!motionOn && reducedMotion.matches) setStatus('Motion is off because your device prefers reduced motion. You can still drag the photo.');
+  if (!motionOn && reducedMotion.matches) setStatus('Motion is off because your device prefers reduced motion. You can still drag the photo.');
   else if (!motionOn) setStatus('Motion is off. Drag the photo to look around.');
+  else if (!sensorApisPresent()) setStatus('This browser has no motion sensors. Drag the photo to look around.');
+  else if (!permissionGranted) setStatus('Tap Enable motion, then tilt your phone.');
   else setStatus('Tilt your phone gently.');
 }
 
@@ -355,6 +355,21 @@ updateMotionButton();
 defaultStatus();
 startSensors();
 requestFrame();
+
+// Browsers with a permission API (iOS Safari, recent Chrome) resolve immediately
+// without a tap when access was already granted; otherwise they reject and the
+// Enable motion button stays.
+if (!permissionGranted) {
+  requestSensorPermission()
+    .then((granted) => {
+      if (!granted || permissionGranted) return;
+      permissionGranted = true;
+      startSensors();
+      updateMotionButton();
+      defaultStatus();
+    })
+    .catch(() => {});
+}
 
 // Exposed for automated tests only.
 (window as unknown as { __depthPhoto: unknown }).__depthPhoto = {

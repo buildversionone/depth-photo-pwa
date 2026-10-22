@@ -32,10 +32,14 @@ async function tilt(page: Page, rollDeg: number, frames = 90) {
   );
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, context }) => {
+  // Recent Chrome gates motion events behind DeviceOrientationEvent.requestPermission().
+  await context.grantPermissions(['accelerometer', 'gyroscope', 'magnetometer']).catch(() => {});
   await page.goto('/');
   await expect(page.locator('#view')).toBeVisible();
   await page.waitForFunction(() => 'renderer' in ((window as unknown as { __depthPhoto?: object }).__depthPhoto ?? {}));
+  const enable = page.getByRole('button', { name: 'Enable motion' });
+  if (await enable.isVisible()) await enable.click();
 });
 
 test('renders the sample scene with WebGL2 and no console errors', async ({ page }) => {
@@ -105,10 +109,13 @@ test('reset view returns the background to centre', async ({ page }) => {
   await page.mouse.move(box.x + 250, box.y + 160, { steps: 5 });
   await page.mouse.up();
   await page.getByRole('button', { name: 'Reset view' }).click();
-  await page.waitForTimeout(1200);
-  const s = await state(page);
-  expect(Math.abs(s.offset.x)).toBeLessThan(0.5);
-  expect(Math.abs(s.offset.y)).toBeLessThan(0.5);
+  // Software rendering on CI can be slow; the spring caps each step, so poll.
+  await expect
+    .poll(async () => {
+      const s = await state(page);
+      return Math.max(Math.abs(s.offset.x), Math.abs(s.offset.y));
+    }, { timeout: 10_000 })
+    .toBeLessThan(0.5);
 });
 
 test('reduced motion starts with motion off', async ({ browser }) => {
