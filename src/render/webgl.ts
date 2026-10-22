@@ -22,6 +22,7 @@ uniform vec4 uContent;      // content rect in screen uv: x, y, w, h
 uniform vec4 uCrop;         // visible image region in image uv: x, y, w, h
 uniform vec2 uOffset;       // background shift in image uv
 uniform vec3 uLetterbox;
+uniform float uDim;         // background darkening while editing the cutout
 out vec4 outColor;
 void main() {
   vec2 q = (vScreen - uContent.xy) / uContent.zw;
@@ -31,7 +32,7 @@ void main() {
   }
   vec2 uv = uCrop.xy + q * uCrop.zw;
   vec2 bgUv = clamp(uv + uOffset, vec2(0.0), vec2(1.0));
-  vec4 bg = texture(uBg, bgUv);
+  vec4 bg = texture(uBg, bgUv) * (1.0 - uDim);
   vec4 fg = texture(uFg, uv);
   outColor = vec4(fg.rgb + bg.rgb * (1.0 - fg.a), 1.0);
 }`;
@@ -59,7 +60,8 @@ export class WebGLCompositor implements Compositor {
   private fgTex: WebGLTexture | null = null;
   private scene: PreparedScene | null = null;
   private lost = false;
-  private u!: Record<'bg' | 'fg' | 'content' | 'crop' | 'offset' | 'letterbox', WebGLUniformLocation | null>;
+  private u!: Record<'bg' | 'fg' | 'content' | 'crop' | 'offset' | 'letterbox' | 'dim', WebGLUniformLocation | null>;
+  private dim = 0;
   private letterbox: [number, number, number] = [0.059, 0.082, 0.094];
 
   /** Throws if WebGL2 is unavailable. */
@@ -102,7 +104,12 @@ export class WebGLCompositor implements Compositor {
       crop: gl.getUniformLocation(prog, 'uCrop'),
       offset: gl.getUniformLocation(prog, 'uOffset'),
       letterbox: gl.getUniformLocation(prog, 'uLetterbox'),
+      dim: gl.getUniformLocation(prog, 'uDim'),
     };
+  }
+
+  setDim(amount: number): void {
+    this.dim = Math.min(Math.max(amount, 0), 1);
   }
 
   setLetterbox(rgb: [number, number, number]): void {
@@ -169,6 +176,7 @@ export class WebGLCompositor implements Compositor {
     gl.uniform4f(this.u.crop, crop.x / scene.width, crop.y / scene.height, crop.w / scene.width, crop.h / scene.height);
     gl.uniform2f(this.u.offset, offset.x / scene.width, offset.y / scene.height);
     gl.uniform3f(this.u.letterbox, ...this.letterbox);
+    gl.uniform1f(this.u.dim, this.dim);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 

@@ -61,6 +61,49 @@ body {
   pointer-events: none;
 }
 
+#busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 21, 24, 0.72);
+  font-size: 15px;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
+
+button.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+button:disabled {
+  opacity: 0.5;
+}
+
 #status {
   min-height: 1.5em;
   padding: 6px 16px 0;
@@ -69,6 +112,7 @@ body {
   text-align: center;
 }
 
+#edit-bar,
 #toolbar {
   display: flex;
   flex-wrap: wrap;

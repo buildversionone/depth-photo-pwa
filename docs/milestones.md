@@ -3,8 +3,8 @@
 | | Goal | Status |
 |---|---|---|
 | M0 | Scaffold: Vite + TypeScript, PWA manifest and service worker, tests, CI, Pages deploy | Done |
-| M1 | Renderer and motion with a sample scene; sensor pipeline, drag fallback, reduced motion, iOS permission, debug readout | Built and tested in desktop Chromium; **needs testing on the Galaxy A07** |
-| M2 | Segmentation (MediaPipe DeepLab-v3 + MagicTouch), tap-to-select fallback | Not started |
+| M1 | Renderer and motion with a sample scene; sensor pipeline, drag fallback, reduced motion, iOS permission, debug readout | Done. Tested on the Galaxy A07 2026-10-22 (gravity 60 Hz, smooth) |
+| M2 | Photo cut-out: EfficientDet-Lite0 suggests subjects, MagicTouch v1 cuts them out (both CPU, tasks-vision 0.10.21, settings taken from the owner's spike), centre fallback, Add/Remove/Undo taps, push-pull background fill | Built, awaiting A07 test |
 | M3 | Edge refinement, background band fill, blur, automatic motion range | Not started |
 | M4 | Offline model setup, storage persistence, error handling, export | Not started |
 | M5 | Cross-browser pass (Samsung Internet, Chrome, iOS Safari) | Not started |

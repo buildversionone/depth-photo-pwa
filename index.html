@@ -14,15 +14,29 @@
       <div id="stage">
         <canvas id="view" aria-label="Photo with depth effect"></canvas>
         <div id="hud" hidden></div>
+        <div id="busy" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <span id="busy-text"></span>
+        </div>
       </div>
 
       <div id="status" role="status" aria-live="polite"></div>
 
       <div id="toolbar">
+        <button id="pick-photo" type="button" class="primary">Choose photo</button>
+        <input id="photo-input" type="file" accept="image/*" hidden />
+        <button id="fix-cutout" type="button" hidden>Fix cutout</button>
         <button id="enable-motion" type="button" hidden>Enable motion</button>
         <button id="toggle-motion" type="button" aria-pressed="true">Motion on</button>
         <button id="reset" type="button">Reset view</button>
         <button id="toggle-settings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
+      </div>
+
+      <div id="edit-bar" hidden>
+        <button id="edit-add" type="button" aria-pressed="true">Add</button>
+        <button id="edit-remove" type="button" aria-pressed="false">Remove</button>
+        <button id="edit-undo" type="button" disabled>Undo</button>
+        <button id="edit-done" type="button" class="primary">Done</button>
       </div>
 
       <form id="settings" hidden>

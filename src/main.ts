@@ -5,10 +5,13 @@ import { MotionController } from './motion/controller';
 import { requestSensorPermission, SensorInput, sensorApisPresent, sensorsNeedPermission, type SensorSource } from './motion/sensors';
 import { Canvas2DCompositor } from './render/canvas2d';
 import type { Compositor } from './render/compositor';
-import { unitToPixelOffset } from './render/layout';
+import { canvasToImage, unitToPixelOffset } from './render/layout';
 import { WebGLCompositor } from './render/webgl';
+import { Preparer, type PrepareOutcome } from './prepare/client';
+import type { EditMode } from './prepare/protocol';
 import { createSampleScene } from './scene/sample';
-import type { PixelOffset } from './shared/types';
+import { DecodeError, decodeForProcessing } from './shared/decode';
+import type { PixelOffset, PreparedScene } from './shared/types';
 
 const $ = <T extends HTMLElement>(id: string) => {
   const el = document.getElementById(id);
@@ -24,6 +27,17 @@ const btnMotion = $<HTMLButtonElement>('toggle-motion');
 const btnReset = $<HTMLButtonElement>('reset');
 const btnSettings = $<HTMLButtonElement>('toggle-settings');
 const form = $<HTMLFormElement>('settings');
+const btnPick = $<HTMLButtonElement>('pick-photo');
+const fileInput = $<HTMLInputElement>('photo-input');
+const btnFix = $<HTMLButtonElement>('fix-cutout');
+const toolbar = $('toolbar');
+const editBar = $('edit-bar');
+const btnAdd = $<HTMLButtonElement>('edit-add');
+const btnRemove = $<HTMLButtonElement>('edit-remove');
+const btnUndo = $<HTMLButtonElement>('edit-undo');
+const btnDone = $<HTMLButtonElement>('edit-done');
+const busy = $('busy');
+const busyText = $('busy-text');
 
 let settings: Settings = loadSettings();
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -44,12 +58,32 @@ function createCompositor(): Compositor {
 }
 
 const compositor = createCompositor();
-const scene = createSampleScene(settings.maxOffset);
+let scene: PreparedScene = createSampleScene(settings.maxOffset);
+/** Whether the current scene has a separated subject (otherwise it is shown still). */
+let sceneHasSubject = true;
+let lastTimings = '';
 compositor.resize();
 try {
   compositor.setScene(scene);
 } catch (err) {
   setStatus(err instanceof Error ? err.message : String(err));
+}
+
+function showScene(next: PreparedScene, hasSubject: boolean): void {
+  compositor.setScene(next);
+  const prev = scene;
+  scene = next;
+  sceneHasSubject = hasSubject;
+  scene.maxOffset = hasSubject ? settings.maxOffset : 0;
+  // Release the previous layers' pixel memory promptly.
+  for (const layer of [prev.background, prev.foreground]) {
+    if (layer instanceof HTMLCanvasElement) layer.width = layer.height = 0;
+  }
+  manualHold = { x: 0, y: 0 };
+  controller.setManual(null);
+  controller.recenter();
+  dirty = true;
+  requestFrame();
 }
 
 // ---- Motion ---------------------------------------------------------------
@@ -139,6 +173,8 @@ function renderHud(): void {
     `offset    ${current.x.toFixed(1)}, ${current.y.toFixed(1)} px (max ${(scene.maxOffset * Math.min(scene.width, scene.height)).toFixed(0)})`,
     `draws/s   ${drawRate.toFixed(0)}`,
     `canvas    ${canvas.width}×${canvas.height}  dpr ${devicePixelRatio}`,
+    `image     ${scene.width}×${scene.height}  ${scene.label}`,
+    ...(lastTimings ? [`timings   ${lastTimings}`] : []),
   ].join('\n');
 }
 
@@ -147,9 +183,24 @@ function renderHud(): void {
 let drag: { id: number; x: number; y: number; ox: number; oy: number } | null = null;
 let manualHold: { x: number; y: number } = { x: 0, y: 0 };
 
+/** Fix-cutout mode: taps add or remove whatever MagicTouch finds under them. */
+let editing = false;
+let editOp: EditMode = 'add';
+let downAt: { x: number; y: number } | null = null;
+
 canvas.addEventListener('pointerdown', (e) => {
+  downAt = { x: e.clientX, y: e.clientY };
+  if (editing) return;
   canvas.setPointerCapture(e.pointerId);
   drag = { id: e.pointerId, x: e.clientX, y: e.clientY, ox: manualHold.x, oy: manualHold.y };
+});
+
+canvas.addEventListener('click', (e) => {
+  if (!editing || processing || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 10) return;
+  const rect = canvas.getBoundingClientRect();
+  const p = canvasToImage(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height, scene.width, scene.height, scene.maxOffset);
+  if (!p) return;
+  void runPrepare(() => preparer.edit(editOp, p, (step) => setBusy(step)));
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -244,6 +295,120 @@ btnSettings.addEventListener('click', () => {
   requestFrame();
 });
 
+// ---- Your photo -------------------------------------------------------------
+
+const preparer = new Preparer(() => settings.maxOffset);
+let processing = false;
+
+function setBusy(text: string | null): void {
+  busy.hidden = text === null;
+  busyText.textContent = text ?? '';
+  for (const b of [btnPick, btnFix, btnAdd, btnRemove, btnDone]) b.disabled = text !== null;
+  btnUndo.disabled = text !== null || !canUndo;
+}
+
+let canUndo = false;
+
+function editHint(): void {
+  setStatus(
+    editOp === 'add'
+      ? 'Tap anything that should stay still to add it.'
+      : 'Tap anything that should move with the background to remove it.',
+  );
+}
+
+function setEditing(on: boolean): void {
+  editing = on;
+  toolbar.hidden = on;
+  editBar.hidden = !on;
+  canvas.style.cursor = on ? 'crosshair' : '';
+  // Hold the picture still and darken what is not selected.
+  compositor.setDim(on ? 0.55 : 0);
+  if (on) {
+    controller.setManual({ x: 0, y: 0 });
+    editHint();
+  } else {
+    controller.setManual(null);
+    controller.recenter();
+    defaultStatus();
+  }
+  dirty = true;
+  requestFrame();
+}
+
+function setEditOp(op: EditMode): void {
+  editOp = op;
+  btnAdd.setAttribute('aria-pressed', String(op === 'add'));
+  btnRemove.setAttribute('aria-pressed', String(op === 'remove'));
+  editHint();
+}
+
+function formatTimings(t: Record<string, number>): string {
+  return Object.entries(t)
+    .map(([k, v]) => `${k} ${v}`)
+    .join(' · ') + ' ms';
+}
+
+async function runPrepare(task: () => Promise<PrepareOutcome>): Promise<void> {
+  if (processing) return;
+  processing = true;
+  setBusy('Preparing…');
+  try {
+    const out = await task();
+    showScene(out.scene, out.hasSubject);
+    lastTimings = formatTimings(out.timings);
+    canUndo = out.canUndo;
+    btnFix.hidden = false;
+    if (editing) {
+      controller.setManual({ x: 0, y: 0 });
+      editHint();
+    } else if (!out.hasSubject) {
+      setEditing(true);
+      setEditOp('add');
+      setStatus('No subject found automatically. Tap the person or object that should stay still.');
+    } else {
+      defaultStatus();
+    }
+  } catch (err) {
+    console.error(err);
+    const msg = err instanceof Error ? err.message : String(err);
+    setStatus(`Could not process this photo: ${msg}`);
+    // A crashed worker may have run out of memory; start fresh next time.
+    preparer.reset();
+  } finally {
+    processing = false;
+    if (!busy.hidden) setBusy(null);
+  }
+}
+
+btnPick.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files?.[0];
+  fileInput.value = '';
+  if (!file) return;
+  setEditing(false);
+  void runPrepare(async () => {
+    setBusy('Opening photo…');
+    let image: ImageBitmap;
+    try {
+      image = await decodeForProcessing(file);
+    } catch (err) {
+      throw err instanceof DecodeError ? err : new Error('The photo could not be opened. It may be too large for this phone.');
+    }
+    return preparer.process(image, (step) => setBusy(step));
+  });
+});
+
+btnFix.addEventListener('click', () => {
+  setEditing(true);
+  setEditOp('add');
+});
+btnAdd.addEventListener('click', () => setEditOp('add'));
+btnRemove.addEventListener('click', () => setEditOp('remove'));
+btnUndo.addEventListener('click', () => void runPrepare(() => preparer.undo()));
+btnDone.addEventListener('click', () => setEditing(false));
+
 // ---- Settings panel -------------------------------------------------------
 
 type NumKey = 'strength' | 'maxOffset' | 'tiltRange' | 'recenterSeconds' | 'minCutoff' | 'beta' | 'springOmega';
@@ -284,7 +449,7 @@ $<HTMLInputElement>('s-maxOffset').step = '0.25';
 
 function applySettings(): void {
   controller.setParams(settings);
-  scene.maxOffset = settings.maxOffset;
+  scene.maxOffset = sceneHasSubject ? settings.maxOffset : 0;
   hud.hidden = !settings.showHud;
   saveSettings(settings);
   syncForm();
@@ -381,5 +546,25 @@ if (!permissionGranted) {
   },
   get renderer() {
     return compositor.kind;
+  },
+  get hasSubject() {
+    return sceneHasSubject;
+  },
+  get busy() {
+    return processing;
+  },
+  get status() {
+    return statusEl.textContent;
+  },
+  /** PNG data URLs of the current layers, for debugging and tests. */
+  layers() {
+    const toUrl = (l: CanvasImageSource & { width: number; height: number }) => {
+      const c = document.createElement('canvas');
+      c.width = l.width;
+      c.height = l.height;
+      c.getContext('2d')!.drawImage(l, 0, 0);
+      return c.toDataURL('image/png');
+    };
+    return { foreground: toUrl(scene.foreground), background: toUrl(scene.background) };
   },
 };

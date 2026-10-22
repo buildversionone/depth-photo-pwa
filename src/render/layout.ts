@@ -27,6 +27,27 @@ export function containRect(canvasW: number, canvasH: number, contentW: number, 
 }
 
 /**
+ * Map a point on the canvas (CSS pixels, relative to its top-left) to normalized
+ * image coordinates of the fixed foreground layer. Returns null outside the photo.
+ */
+export function canvasToImage(
+  px: number,
+  py: number,
+  canvasW: number,
+  canvasH: number,
+  width: number,
+  height: number,
+  maxOffset: number,
+): { x: number; y: number } | null {
+  const crop = cropRect(width, height, maxOffset);
+  const r = containRect(canvasW, canvasH, crop.w, crop.h);
+  const u = (px - r.x) / r.w;
+  const v = (py - r.y) / r.h;
+  if (u < 0 || v < 0 || u > 1 || v > 1) return null;
+  return { x: (crop.x + u * crop.w) / width, y: (crop.y + v * crop.h) / height };
+}
+
+/**
  * Convert a unit offset ([-1, 1] per axis) to image pixels, clamped so the
  * background sample rectangle always stays inside the image.
  */

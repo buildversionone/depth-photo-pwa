@@ -8,6 +8,11 @@ export class Canvas2DCompositor implements Compositor {
   private ctx: CanvasRenderingContext2D;
   private scene: PreparedScene | null = null;
   private letterbox = '#0f1518';
+  private dim = 0;
+
+  setDim(amount: number): void {
+    this.dim = Math.min(Math.max(amount, 0), 1);
+  }
 
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -46,6 +51,10 @@ export class Canvas2DCompositor implements Compositor {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(scene.background, crop.x + offset.x, crop.y + offset.y, crop.w, crop.h, d.x, d.y, d.w, d.h);
+    if (this.dim > 0) {
+      ctx.fillStyle = `rgba(0,0,0,${this.dim})`;
+      ctx.fillRect(d.x, d.y, d.w, d.h);
+    }
     ctx.drawImage(scene.foreground, crop.x, crop.y, crop.w, crop.h, d.x, d.y, d.w, d.h);
   }
 

@@ -7,6 +7,8 @@ export interface Compositor {
   resize(): void;
   /** Draw the scene with the background shifted by `offset` image pixels. */
   draw(offset: PixelOffset): void;
+  /** Darken the background (0..1) so the selected subject stands out while editing. */
+  setDim(amount: number): void;
   dispose(): void;
 }
 

@@ -33,6 +33,10 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
   },
+  worker: {
+    // Classic worker (MediaPipe 0.10.x uses importScripts), so a single IIFE bundle.
+    format: 'iife',
+  },
   plugins: [
     contentSecurityPolicy(),
     VitePWA({
@@ -59,6 +63,18 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
+        // Models and the WASM runtime (~47 MB) are cached on first use rather than at
+        // install, so installing stays quick. A guided offline-setup step comes in M4.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /\/(models|mediapipe)\//.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'depth-photo-models-v1',
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
     }),
   ],

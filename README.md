@@ -4,7 +4,7 @@ An offline-first, Android-first PWA that turns a single photo into a subtle 3D w
 
 Everything runs on the device. Photos are never uploaded.
 
-**Status:** Milestone 1 (renderer and motion, using a built-in sample scene). Segmentation of your own photos arrives in Milestone 2. See the [technical assessment](https://claude.ai/artifact/1KTjAiMzBcMwTEsgnvyKLF) and [docs/milestones.md](docs/milestones.md).
+**Status:** Milestone 2. Choose a photo and the app finds the subject, cuts it out and fills the background behind it. Use **Fix cut-out** to add or remove parts with taps. See the [technical assessment](https://claude.ai/artifact/1KTjAiMzBcMwTEsgnvyKLF) and [docs/milestones.md](docs/milestones.md).
 
 ## Try it
 
